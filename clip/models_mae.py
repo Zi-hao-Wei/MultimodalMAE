@@ -16,6 +16,54 @@ import torch.nn as nn
 
 from timm.models.vision_transformer import PatchEmbed, Block
 
+class Attention(nn.Module):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
+        super().__init__()
+        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = head_dim ** -0.5
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, mask):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn * mask
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+    
+class Block_w_mask(Block):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def forward(self, x, mask):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        if mask not None:
+            attn = attn * mask
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
 # from timm import to_2tuple
 # from
 
@@ -150,7 +198,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.blocks = nn.ModuleList([
-            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            Block_w_mask(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         # --------------------------------------------------------------------------
@@ -164,7 +212,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
-            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            Block_w_mask(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
@@ -268,7 +316,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, image_features,text_features, mask_ratio_img, mask_ratio_text):
+    def forward_encoder(self, image_features,text_features, mask_ratio_img, mask_ratio_text, attn_mask):
         # embed patches
         # x = self.patch_embed(x)
 
@@ -295,12 +343,12 @@ class MaskedAutoencoderViT(nn.Module):
         print(x.shape)
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x)
+            x = blk(x, attn_mask)
         x = self.norm(x)
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x, ids_restore):
+    def forward_decoder(self, x, ids_restore, attn_mask):
         # embed tokens
         x = self.decoder_embed(x)
 
@@ -315,7 +363,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
-            x = blk(x)
+            x = blk(x, attn_mask)
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -326,7 +374,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x
 
-    def forward(self, imgs, text, img_mask_ratio=0.75, text_mask_ratio=0.75):
+    def forward(self, imgs, text, img_mask_ratio=0.75, text_mask_ratio=0.75, attn_mask = None):
         image_features = self.clip.encode_image(imgs)
         text_features = self.clip.encode_text(text)
 
@@ -337,9 +385,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         unified_features = torch.cat([image_features,text_features],1)
 
-        latent, unified_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio)
+        latent, unified_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio, attn_mask)
 
-        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
+        pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
         loss = self.forward_loss(unified_features, pred, unified_mask)
         return loss, pred, unified_mask
 
