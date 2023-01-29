@@ -29,26 +29,7 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, mask):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn * mask
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
-    
-class Block_w_mask(Block):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-    
-    def forward(self, x, mask):
+    def forward(self, x, mask=None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
@@ -63,6 +44,16 @@ class Block_w_mask(Block):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
+    
+class Block_w_mask(Block):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def forward(self, x, mask=None):
+        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), mask)))
+        x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
+        return x
+
 
 # from timm import to_2tuple
 # from
