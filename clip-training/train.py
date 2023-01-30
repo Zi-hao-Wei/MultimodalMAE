@@ -66,7 +66,7 @@ def train(config, train_dataset, model):
     for epoch in range(int(config.num_train_epochs)):
         print("EPOCH",epoch)
         for step, batch in enumerate(train_dataloader):
-            input_images, input_texts = batch
+            input_images, input_texts, mask = batch
 
             input_images = input_images.to(torch.device(config.device))
             input_texts = input_texts.to(torch.device(config.device))
