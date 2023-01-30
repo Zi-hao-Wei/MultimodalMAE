@@ -307,7 +307,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, image_features,text_features, mask_ratio_img, mask_ratio_text, attn_mask):
+    def forward_encoder(self, image_features,text_features, mask_ratio_img, mask_ratio_text, attn_mask=None):
         # embed patches
         # x = self.patch_embed(x)
 
@@ -339,7 +339,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x, ids_restore, attn_mask):
+    def forward_decoder(self, x, ids_restore, attn_mask=None):
         # embed tokens
         x = self.decoder_embed(x)
 
