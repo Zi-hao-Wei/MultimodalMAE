@@ -80,8 +80,9 @@ class CLIP_COCO_dataset(Dataset):
         tokens = [sot_token] + self._tokenizer.encode(text) + [eot_token]
         result = torch.zeros(self.context_length, dtype=torch.long)
         result[:len(tokens)] = torch.tensor(tokens)
-        mask = torch.ones(self.context_length + 197)
-        mask[(197 + len(tokens)):] = -1e9
+        mask = torch.ones((self.context_length + 197, self.context_length + 197))
+        mask[(197 + len(tokens)):, :] = -1e9
+        mask[:, (197 + len(tokens)):] = -1e9
         return result, mask
 
     def __len__(self):
