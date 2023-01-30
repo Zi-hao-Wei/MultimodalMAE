@@ -80,7 +80,9 @@ class CLIP_COCO_dataset(Dataset):
         tokens = [sot_token] + self._tokenizer.encode(text) + [eot_token]
         result = torch.zeros(self.context_length, dtype=torch.long)
         result[:len(tokens)] = torch.tensor(tokens)
-        return result
+        mask = torch.ones_like(result)
+        mask[len(tokens):] = -1e9
+        return result, mask
 
     def __len__(self):
     
@@ -99,6 +101,6 @@ class CLIP_COCO_dataset(Dataset):
         img_path = op.join(self.img_dir, img_filename)
         img = Image.open(img_path)
         img_input = self.transform(img)
-        text_input = self.tokenize(text)
+        text_input, mask = self.tokenize(text)
         print(text_input)
-        return img_input, text_input
+        return img_input, text_input, mask
