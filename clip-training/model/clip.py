@@ -10,8 +10,11 @@ from PIL import Image
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from tqdm import tqdm
 
+# from model import build_model
 from model.model import build_model
+
 from model.simple_tokenizer import SimpleTokenizer as _Tokenizer
+# from simple_tokenizer import SimpleTokenizer as _Tokenizer
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -260,16 +263,16 @@ if __name__ == '__main__':
     img = torch.cat([img,img],0)
 
     print(img.shape, text.shape)
-    image_features = model.encode_image(img)
-    print("img_features",image_features.shape)
-    text_features = model.encode_text(text)
-    print("text_features",text_features.shape)
-    unified = torch.cat([image_features,text_features],1)
-    print(unified.shape)
+    # image_features = model.encode_image(img)
+    # print("img_features",image_features.shape)
+    # text_features = model.encode_text(text)
+    # print("text_features",text_features.shape)
+    # unified = torch.cat([image_features,text_features],1)
+    # print(unified.shape)
 
     print("========MAE TEST========")
 
     import models_mae
     model = models_mae.mae_vit_base_patch16_dec512d8b().cuda()
-    loss, pred, unified_mask = model(img,text)
+    loss = model(img,text)
     print(loss)

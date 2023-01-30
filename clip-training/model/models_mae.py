@@ -14,11 +14,11 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-from timm.models.vision_transformer import PatchEmbed, Block
-
+from timm.models.vision_transformer import PatchEmbed
+from timm.models.layers import DropPath,Mlp
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
-        super().__init__()
+        super(Attention,self).__init__()
         assert dim % num_heads == 0, 'dim should be divisible by num_heads'
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -35,7 +35,7 @@ class Attention(nn.Module):
         q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
-        if mask not None:
+        if mask != None:
             attn = attn * mask
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -45,10 +45,39 @@ class Attention(nn.Module):
         x = self.proj_drop(x)
         return x
     
-class Block_w_mask(Block):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-    
+class LayerScale(nn.Module):
+    def __init__(self, dim, init_values=1e-5, inplace=False):
+        super().__init__()
+        self.inplace = inplace
+        self.gamma = nn.Parameter(init_values * torch.ones(dim))
+
+    def forward(self, x):
+        return x.mul_(self.gamma) if self.inplace else x * self.gamma
+
+
+class Block_w_mask(nn.Module):
+    def __init__( self,
+            dim,
+            num_heads,
+            mlp_ratio=4.,
+            qkv_bias=False,
+            drop=0.,
+            attn_drop=0.,
+            init_values=None,
+            drop_path=0.,
+            act_layer=nn.GELU,
+            norm_layer=nn.LayerNorm):
+        super(Block_w_mask, self).__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+        self.norm2 = norm_layer(dim)
+        self.mlp = Mlp(in_features=dim, hidden_features=int(dim * mlp_ratio), act_layer=act_layer, drop=drop)
+        self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
     def forward(self, x, mask=None):
         x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), mask)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
@@ -161,7 +190,7 @@ class Block_w_mask(Block):
 #     return v_resample_kernel(patch_embed)
 
 
-from util.pos_embed import get_2d_sincos_pos_embed
+from pos_embed import get_2d_sincos_pos_embed
 
 import clip 
 class MaskedAutoencoderViT(nn.Module):
@@ -170,9 +199,9 @@ class MaskedAutoencoderViT(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, vocab_size=49408):
         super().__init__()
-
+        self.vocab_size = vocab_size
 
         #CLIP Encoder
         self.clip, self.clip_process = clip.load("ViT-B/16")
@@ -207,11 +236,13 @@ class MaskedAutoencoderViT(nn.Module):
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, 512, bias=True) # decoder to patch
+        self.decoder_pred = nn.Linear(decoder_embed_dim, 768, bias=True) # decoder to patch
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
-
+        self.bertlinear= nn.Linear(decoder_embed_dim, vocab_size)
+        self.softmax = nn.LogSoftmax(dim=-1)
+        self.nllloss = nn.NLLLoss(reduce=False)
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -320,8 +351,8 @@ class MaskedAutoencoderViT(nn.Module):
         image_features, mask1, ids_restore1 = self.random_masking(image_features, mask_ratio_img)
         text_features, mask2, ids_restore2 = self.random_masking(text_features, mask_ratio_text)
 
-        print(ids_restore1)
-        print(mask1)
+        # print(ids_restore1)
+        # print(mask1)
         x = torch.cat([image_features,text_features],1)
         mask = torch.cat([mask1,mask2],1)
         #FIXME
@@ -331,13 +362,13 @@ class MaskedAutoencoderViT(nn.Module):
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1) 
-        print(x.shape)
+        # print(x.shape)
         # apply Transformer blocks
         for blk in self.blocks:
             x = blk(x, attn_mask)
         x = self.norm(x)
 
-        return x, mask, ids_restore
+        return x, mask, mask1, mask2, ids_restore
 
     def forward_decoder(self, x, ids_restore, attn_mask=None):
         # embed tokens
@@ -356,16 +387,18 @@ class MaskedAutoencoderViT(nn.Module):
         for blk in self.decoder_blocks:
             x = blk(x, attn_mask)
         x = self.decoder_norm(x)
-
-        # predictor projection
-        x = self.decoder_pred(x)
-
         # remove cls token
         x = x[:, 1:, :]
 
-        return x
+        # predictor projection
 
-    def forward(self, imgs, text, img_mask_ratio=0.75, text_mask_ratio=0.75, attn_mask = None):
+        img_pred = self.decoder_pred(x[:,:196,:])
+        text_pred = self.softmax(self.bertlinear(x[:,196:,:]))
+
+
+        return img_pred,text_pred
+
+    def forward(self, imgs, text, img_mask_ratio=0.75, text_mask_ratio=0.25, attn_mask = None):
         image_features = self.clip.encode_image(imgs)
         text_features = self.clip.encode_text(text)
 
@@ -376,12 +409,14 @@ class MaskedAutoencoderViT(nn.Module):
 
         unified_features = torch.cat([image_features,text_features],1)
 
-        latent, unified_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio, attn_mask)
+        latent, unified_mask, img_mask, token_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio, attn_mask)
 
-        pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
-        loss = self.forward_loss(unified_features, pred, unified_mask)
-        return loss, pred, unified_mask
+        img_pred, text_pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
+        img_loss = self.forward_img_loss(imgs, img_pred, img_mask)
+        text_loss = self.forward_text_loss(text, text_pred, token_mask)
+        loss = img_loss + text_loss
 
+        return loss
 
 
     # def forward(self, imgs, mask_ratio=0.75):
@@ -390,28 +425,41 @@ class MaskedAutoencoderViT(nn.Module):
     #     loss = self.forward_loss(imgs, pred, mask)
     #     return loss, pred, mask
 
-    def forward_loss(self, target, pred, mask):
+    def forward_img_loss(self, imgs, pred, mask):
         """
         imgs: [N, 3, H, W]
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove, 
         """
+        target = self.patchify(imgs)
         if self.norm_pix_loss:
             mean = target.mean(dim=-1, keepdim=True)
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.e-6)**.5
-        print("pred",pred.shape)
-        print("target",target.shape)
+        # print("pred",pred.shape)
+        # print("target",target.shape)
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
+    def forward_text_loss(self, tokens, pred, mask):
+        """
+        """
+        #Need Mapping pred to labels
+        # print("tokens",tokens)
 
+        # tokens = pred.reshape(-1,77)
+        # pred = pred.reshape(-1,self.vocab_size)
+        pred = pred.transpose(1,2)
+        # print("pred",pred.shape)
+        tokens = tokens.long()
+        loss = self.nllloss(pred, tokens)
+        # print("Loss", loss.shape)
 
-
-
+        loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
+        return loss
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
