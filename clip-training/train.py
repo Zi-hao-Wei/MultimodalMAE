@@ -97,7 +97,7 @@ def train(config, train_dataset, model):
             if config.gradient_accumulation_steps > 1:
                 loss = loss / config.gradient_accumulation_steps
             # print(loss)
-            exit()
+            # exit()
             loss.backward()
 
             global_loss += loss.item()
@@ -204,9 +204,9 @@ def main():
     model_params['vision_patch_size'] = None
     model = mae_vit_base_patch16_dec512d8b()
     
-    model_parameter = torch.load(r"F:\clip-training\saved_checkpoints\checkpoint_14_110000.pt")["model_state_dict"]
+    # model_parameter = torch.load(r"F:\clip-training\saved_checkpoints\checkpoint_14_110000.pt")["model_state_dict"]
 
-    model.load_state_dict(model_parameter,strict=True)
+    # model.load_state_dict(model_parameter,strict=True)
 
     logger.info(f"Training/evaluation parameters {train_config}")
 

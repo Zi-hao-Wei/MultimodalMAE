@@ -14,7 +14,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-from timm.models.vision_transformer import PatchEmbed
+from timm.models.vision_transformer import PatchEmbed, Block
 from timm.models.layers import DropPath,Mlp
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
@@ -188,11 +188,12 @@ class Block_w_mask(nn.Module):
 
 #     v_resample_kernel = vmap(vmap(resample_kernel, 0, 0), 1, 1)
 #     return v_resample_kernel(patch_embed)
+from model.pos_embed import get_2d_sincos_pos_embed
+# from pos_embed import get_2d_sincos_pos_embed
+import model.clip as clip
 
 
-from pos_embed import get_2d_sincos_pos_embed
-
-import clip 
+# import clip 
 class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
@@ -218,7 +219,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.blocks = nn.ModuleList([
-            Block_w_mask(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         # --------------------------------------------------------------------------
@@ -364,6 +365,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1) 
         # print(x.shape)
         # apply Transformer blocks
+        print(x.shape,attn_mask.shape)
         for blk in self.blocks:
             x = blk(x, attn_mask)
         x = self.norm(x)

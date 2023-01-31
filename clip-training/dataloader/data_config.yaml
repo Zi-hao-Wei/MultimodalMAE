@@ -1,2 +1,2 @@
 train_img_dir : 'F:\mscoco\train2017'
-train_annotation_file : 'F:\mscoco\train2017\annotations\captions_train2017.json'
+train_annotation_file : 'F:\mscoco\annotations\captions_train2017.json'
