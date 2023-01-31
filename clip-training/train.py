@@ -71,7 +71,7 @@ def train(config, train_dataset, model):
             input_images = input_images.to(torch.device(config.device))
             input_texts = input_texts.to(torch.device(config.device))
             
-            loss, pred, unified_mask = model(input_images, input_texts, attn_mask=mask)
+            loss = model(input_images, input_texts, attn_mask=mask)
 
             # # normalized features
             # image_features = image_features / image_features.norm(dim=-1, keepdim=True)
