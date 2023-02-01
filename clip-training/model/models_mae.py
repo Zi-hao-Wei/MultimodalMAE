@@ -412,25 +412,18 @@ class MaskedAutoencoderViT(nn.Module):
     def forward(self, imgs, text, img_mask_ratio=1, text_mask_ratio=0.25, attn_mask = None):
         image_features = self.clip.encode_image(imgs)
         text_features = self.clip.encode_text(text)
-
         # normalized features
         # image_features = image_features / image_features.norm(dim=1, keepdim=True)
         # text_features = text_features / text_features.norm(dim=1, keepdim=True)
 
-
-
         unified_features = torch.cat([image_features,text_features],1)
-
         latent, unified_mask, img_mask, token_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio, attn_mask)
-
         img_pred, text_pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
         # img_loss = self.forward_img_loss(imgs, img_pred, img_mask)
         # text_loss = self.forward_text_loss(text, text_pred, token_mask)
         # loss = img_loss + text_loss
         loss = img_loss
-
         return loss
-
 
     # def forward(self, imgs, mask_ratio=0.75):
     #     latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
@@ -453,7 +446,6 @@ class MaskedAutoencoderViT(nn.Module):
         # print("target",target.shape)
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
@@ -462,7 +454,6 @@ class MaskedAutoencoderViT(nn.Module):
         """
         #Need Mapping pred to labels
         # print("tokens",tokens)
-
         # tokens = pred.reshape(-1,77)
         # pred = pred.reshape(-1,self.vocab_size)
         pred = pred.transpose(1,2)
@@ -470,7 +461,6 @@ class MaskedAutoencoderViT(nn.Module):
         tokens = tokens.long()
         loss = self.nllloss(pred, tokens)
         # print("Loss", loss.shape)
-
         loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
         return loss
 
