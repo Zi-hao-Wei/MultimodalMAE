@@ -463,9 +463,6 @@ class MaskedAutoencoderViT(nn.Module):
         # print("Loss", loss.shape)
         loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
         return loss
-    
-    def forward_finetune(self,text, tokens):
-        
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
