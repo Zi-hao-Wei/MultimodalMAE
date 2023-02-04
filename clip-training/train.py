@@ -15,6 +15,9 @@ from utils import set_seed, mkdir, setup_logger, load_config_file
 from torch.optim import Adam, AdamW # both are same but AdamW has a default weight decay
 # torch.set_printoptions(threshold=np.inf)
 import argparse
+import wandb
+
+
 
 from model.models_mae import mae_vit_base_patch16_dec512d8b
 
@@ -22,10 +25,13 @@ DATA_CONFIG_PATH = 'dataloader/data_config.yaml'
 TRAINER_CONFIG_PATH = 'trainer/train_config.yaml'
 MODEL_CONFIG_PATH = 'model/model_config.yaml'
 
+
+
 def train(config, train_dataset, model):
     '''
     Trains the model.
     '''
+    # config.n_gpu = 1
     
     config.train_batch_size = config.per_gpu_train_batch_size * max(1, config.n_gpu)    
     train_dataloader = get_dataloader(config, train_dataset, is_train=True)
@@ -37,7 +43,7 @@ def train(config, train_dataset, model):
     optimizer = AdamW(model.parameters(), lr=config.optimizer.params.lr, eps=config.optimizer.params.eps, weight_decay=config.optimizer.params.weight_decay)
 
     # Warmup iterations = 20% of total iterations
-    num_warmup_steps = int(0.20 * t_total)
+    num_warmup_steps = int(0.10 * t_total)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps= num_warmup_steps, num_training_steps= t_total)
 
     if config.n_gpu > 1:
@@ -121,6 +127,7 @@ def train(config, train_dataset, model):
                     logger.info("Epoch: {}, global_step: {}, lr: {:.6f}, loss: {:.4f} ({:.4f})".format(epoch, global_step, 
                         optimizer.param_groups[0]["lr"], loss.item(), global_loss / global_step)
                     )
+                    wandb.log({"loss": loss.item(), "global_loss":global_loss / global_step})
 
                 if (config.save_steps > 0 and global_step % config.save_steps == 0) or \
                         global_step == t_total:
@@ -164,17 +171,23 @@ def save_checkpoint(config, epoch, global_step, model, optimizer):
     return
 
 def main():
+    
+    
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_img_dir", default=None, type=str, required=False, help="path of directory containing COCO training images")
     parser.add_argument("--train_annotation_file", default=None, type=str, required=False, help="path of COCO annotation file")
     args = parser.parse_args()
+    
+    
 
     data_config = load_config_file(DATA_CONFIG_PATH)
     train_config = load_config_file(TRAINER_CONFIG_PATH)
     model_config = load_config_file(MODEL_CONFIG_PATH)
 
     config = OmegaConf.merge(train_config, data_config)
+    
+    wandb.init(config=config, project="jem-davis", name="clip-mae-0.1-scale")
 
     # config = OmegaConf.merge(OmegaConf.create(vars(args)), config)  
     # merging cli arguments, if data path given in cli args use those
@@ -204,7 +217,7 @@ def main():
     model_params['vision_patch_size'] = None
     model = mae_vit_base_patch16_dec512d8b()
     
-    # model_parameter = torch.load(r"F:\clip-training\saved_checkpoints\checkpoint_14_110000.pt")["model_state_dict"]
+    # model_parameter = torch.load("saved_checkpoints/checkpoint_34_16000.pt")["model_state_dict"]
 
     # model.load_state_dict(model_parameter,strict=True)
 

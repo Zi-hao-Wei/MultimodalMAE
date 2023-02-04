@@ -16,13 +16,29 @@ import torch.nn as nn
 
 from timm.models.vision_transformer import PatchEmbed, Block
 from timm.models.layers import DropPath,Mlp
+
+import matplotlib.pyplot as plt
+from PIL import Image
+import numpy as np
+
+def show_image(image, title=''):
+    imagenet_mean = np.array([0.4225, 0.4012, 0.3659])
+    imagenet_std = np.array([0.2681, 0.2635, 0.2763])
+    image = image.detach().cpu().numpy()
+    # image is [H, W, 3]
+    assert image.shape[2] == 3
+    plt.imsave(title, np.clip(np.uint8((image * imagenet_std + imagenet_mean) * 255), 0, 255))
+    plt.title(title, fontsize=16)
+    plt.axis('off')
+    return
+
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0., scale=1):
         super(Attention,self).__init__()
         assert dim % num_heads == 0, 'dim should be divisible by num_heads'
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim ** -0.5 * scale
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -35,11 +51,38 @@ class Attention(nn.Module):
         q, k, v = qkv.unbind(0)   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        """
+        print("1")
+        print(attn[0, 0, 1:196,196:196+13])
+        """
         if mask != None:
             # print(attn.shape, mask.shape)
-            attn[:,:, 1:, 1:] = attn[:,:, 1:, 1:]*mask.unsqueeze(1)
+            """
+            if attn[0, 0, 1:196,196:196+13].shape[1] < 1:
+                print(attn[0, 0])
+            """
+            attn = attn+mask.unsqueeze(1)
+            """
+            if attn[0, 0, 1:196,196:196+13].shape[1] < 1:
+                print(attn[0, 0])
+            """
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
+        
+        """
+        
+        print("2")
+        # print(attn[0, 0, 1:196,196:196+13])
+
+        if attn[0, 0, 1:196,196:196+13].shape[1] < 1:
+            print(attn[0, :, -2, :])
+            # plt.imsave("gray.jpg", np.clip(np.uint8((attn[0, 0, 1:13,1:13].transpose(-2,-1)).cpu().detach().numpy()), 0, 1), cmap='gray')
+        else:
+            print(attn[0, :, 1:196, 199])
+            # print(mask[0, 0])
+
+        """
+
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
@@ -67,10 +110,11 @@ class Block_w_mask(nn.Module):
             init_values=None,
             drop_path=0.,
             act_layer=nn.GELU,
-            norm_layer=nn.LayerNorm):
+            norm_layer=nn.LayerNorm,
+            scale=1):
         super(Block_w_mask, self).__init__()
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop, scale=scale)
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -207,7 +251,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         #CLIP Encoder
         self.clip, self.clip_process = clip.load("ViT-B/16")
-        self.clip.cuda().eval()
+        self.clip.cuda()
+        for param in self.clip.parameters():
+            param.requires_grad=False
             
         # --------------------------------------------------------------------------
         # MAE encoder specifics
@@ -234,7 +280,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
-            Block_w_mask(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            Block_w_mask(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, scale=1)
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
@@ -333,10 +379,13 @@ class MaskedAutoencoderViT(nn.Module):
         ids_keep = ids_shuffle[:, :len_keep]
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
         if attn_mask != None:
+            ids_keep_ = ids_keep+1
+            ids_keep_ = torch.cat([torch.zeros((N, 1), device=ids_keep.device, dtype=ids_keep.dtype), ids_keep_], dim=1)
+            print(ids_keep_)
             D_ = attn_mask.shape[1]
-            attn_mask = torch.gather(attn_mask, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D_))
+            attn_mask = torch.gather(attn_mask, dim=1, index=ids_keep_.unsqueeze(-1).repeat(1, 1, D_))
             D_ = attn_mask.shape[1]
-            attn_mask = torch.gather(attn_mask, dim=2, index=ids_keep.unsqueeze(1).repeat(1, D_, 1))
+            attn_mask = torch.gather(attn_mask, dim=2, index=ids_keep_.unsqueeze(1).repeat(1, D_, 1))
 
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([N, L], device=x.device)
@@ -355,7 +404,11 @@ class MaskedAutoencoderViT(nn.Module):
         image_features = image_features + self.pos_embed[:, 1:197, :]
         text_features = text_features + self.pos_embed[:, 197:, :]
         
-        attn_mask = attn_mask[:,196:,196:]
+        image_features_ = image_features
+        
+        if attn_mask != None:
+            pass
+            attn_mask = attn_mask[:,196:,196:]
         
         # masking: length -> length * mask_ratio
         image_features, mask1, ids_restore1, _ = self.random_masking(image_features, mask_ratio_img)
@@ -364,21 +417,35 @@ class MaskedAutoencoderViT(nn.Module):
         # print(ids_restore1)
         # print(mask1)
         x = torch.cat([image_features,text_features],1)
+
         mask = torch.cat([mask1,mask2],1)
+        mask=mask1
+        mask2 = None
         #FIXME
         ids_restore2 = ids_restore2 + 196
         ids_restore = torch.cat([ids_restore1,ids_restore2],1)
+        # ids_restore = ids_restore1
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1) 
+
         # print(x.shape)
         # apply Transformer blocks
         # print(x.shape,attn_mask.shape)
         for blk in self.blocks:
             x = blk(x, attn_mask)
         x = self.norm(x)
-
+        
+        
+        
+        # sim = torch.bmm(x[:,1:14]/10,image_features_[:,:].transpose(-2,-1)).softmax(-1)
+        # print(sim[0])
+        
+        # return x, mask, mask1, mask2, ids_restore, sim
+        
+        
+        
         return x, mask, mask1, mask2, ids_restore
 
     def forward_decoder(self, x, ids_restore, attn_mask=None):
@@ -410,20 +477,43 @@ class MaskedAutoencoderViT(nn.Module):
         return img_pred,text_pred
 
     def forward(self, imgs, text, img_mask_ratio=1, text_mask_ratio=0.25, attn_mask = None):
+        attn_mask = attn_mask.to(imgs.device)
         image_features = self.clip.encode_image(imgs)
         text_features = self.clip.encode_text(text)
+
         # normalized features
         # image_features = image_features / image_features.norm(dim=1, keepdim=True)
         # text_features = text_features / text_features.norm(dim=1, keepdim=True)
 
+
+
         unified_features = torch.cat([image_features,text_features],1)
+
         latent, unified_mask, img_mask, token_mask, ids_restore = self.forward_encoder(image_features, text_features, img_mask_ratio, text_mask_ratio, attn_mask)
+        """
+        for i in range(imgs.shape[-2]):
+            for j in range(imgs.shape[-1]):
+                idx_ = (i // 16) * 14 + j // 16
+                imgs[0, 0, i, j] += 10 * sim[0, 2, idx_]
+                imgs[0, 1, i, j] = 0
+                imgs[0, 2, i, j] = 0
+        show_image(imgs.squeeze(0).permute(1,2,0), 'highlighted.jpg')
+        exit()
+        """
         img_pred, text_pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
-        # img_loss = self.forward_img_loss(imgs, img_pred, img_mask)
+        img_loss = self.forward_img_loss(imgs, img_pred, img_mask)
+        
+        # show_image(imgs.squeeze(0).permute(1,2,0), 'orignal.jpg')
+        # show_image(self.unpatchify(img_pred).squeeze(0).permute(1,2,0), 'reconstructed.jpg')
         # text_loss = self.forward_text_loss(text, text_pred, token_mask)
         # loss = img_loss + text_loss
         loss = img_loss
+        # exit()
+        # loss = ((img_pred - image_features)**2).mean(-1).mean()
+        # print(loss)
+
         return loss
+
 
     # def forward(self, imgs, mask_ratio=0.75):
     #     latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
@@ -438,6 +528,24 @@ class MaskedAutoencoderViT(nn.Module):
         mask: [N, L], 0 is keep, 1 is remove, 
         """
         target = self.patchify(imgs)
+        
+        """
+        U, S, V = torch.linalg.svd(target, full_matrices=True)
+        U_, S_, V_ = torch.linalg.svd(pred, full_matrices=True)
+        print(U.shape, S.shape, V.shape)
+        first = torch.outer(U[0, :, 0], V[0, 0, :])*S[0,0]
+        first_pred = torch.outer(U_[0, :, 0], V_[0, 0, :])*S_[0,0]
+        
+        print(first.shape)
+        show_image(self.unpatchify(first.unsqueeze(0)).squeeze(0).permute(1,2,0), 'first_sing.jpg')
+        show_image(self.unpatchify(first_pred.unsqueeze(0)).squeeze(0).permute(1,2,0), 'first_sing_pred.jpg')
+        result = []
+        for i in range(12):
+            diff = (U[:, :, i] - U_[:, :, i]) ** 2
+            result.append((diff.detach().cpu().numpy().sum()/ 512).round(4))
+        print(result)
+        """
+
         if self.norm_pix_loss:
             mean = target.mean(dim=-1, keepdim=True)
             var = target.var(dim=-1, keepdim=True)
@@ -446,6 +554,7 @@ class MaskedAutoencoderViT(nn.Module):
         # print("target",target.shape)
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
@@ -454,6 +563,7 @@ class MaskedAutoencoderViT(nn.Module):
         """
         #Need Mapping pred to labels
         # print("tokens",tokens)
+
         # tokens = pred.reshape(-1,77)
         # pred = pred.reshape(-1,self.vocab_size)
         pred = pred.transpose(1,2)
@@ -461,6 +571,7 @@ class MaskedAutoencoderViT(nn.Module):
         tokens = tokens.long()
         loss = self.nllloss(pred, tokens)
         # print("Loss", loss.shape)
+
         loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
         return loss
     
