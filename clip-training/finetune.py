@@ -71,7 +71,7 @@ def train(config, train_dataset, model):
             input_images = input_images.to(torch.device(config.device))
             input_texts = input_texts.to(torch.device(config.device))
             
-            loss = model(input_images, input_texts, attn_mask=mask)
+            _,_,loss = model.forward_finetune(input_images, input_texts, attn_mask=mask)
 
             # # normalized features
             # image_features = image_features / image_features.norm(dim=-1, keepdim=True)
@@ -204,9 +204,9 @@ def main():
     model_params['vision_patch_size'] = None
     model = mae_vit_base_patch16_dec512d8b()
     
-    # model_parameter = torch.load(r"F:\clip-training\saved_checkpoints\checkpoint_14_110000.pt")["model_state_dict"]
+    model_parameter = torch.load(r"F:\MultimodalMAE\clip-training\checkpoint_299_138900.pt")["model_state_dict"]
 
-    # model.load_state_dict(model_parameter,strict=True)
+    model.load_state_dict(model_parameter,strict=True)
 
     logger.info(f"Training/evaluation parameters {train_config}")
 

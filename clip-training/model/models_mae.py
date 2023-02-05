@@ -381,7 +381,7 @@ class MaskedAutoencoderViT(nn.Module):
         if attn_mask != None:
             ids_keep_ = ids_keep+1
             ids_keep_ = torch.cat([torch.zeros((N, 1), device=ids_keep.device, dtype=ids_keep.dtype), ids_keep_], dim=1)
-            print(ids_keep_)
+            # print(ids_keep_)
             D_ = attn_mask.shape[1]
             attn_mask = torch.gather(attn_mask, dim=1, index=ids_keep_.unsqueeze(-1).repeat(1, 1, D_))
             D_ = attn_mask.shape[1]
@@ -575,8 +575,34 @@ class MaskedAutoencoderViT(nn.Module):
         loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
         return loss
     
-    def forward_finetune(self,text, tokens):
+    def forward_finetune(self,imgs,text, attn_mask, need_loss = True ):
+        attn_mask = attn_mask.cuda()
+        image_features = self.clip.encode_image(imgs)
+        text_features = self.clip.encode_text(text)
+        text_features = text_features + self.pos_embed[:, 197:, :]
+        text_features, mask2, ids_restore2, attn_mask = self.random_masking(text_features, 0, attn_mask)
+
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(text_features.shape[0], -1, -1)
+        text_features = torch.cat((cls_tokens, text_features), dim=1) 
+
+        # print(x.shape)
+        # apply Transformer blocks
+        # print(x.shape,attn_mask.shape)
+        for blk in self.blocks:
+            text_features = blk(text_features, attn_mask)
+        text_features = self.norm(text_features)
+        text_embedding = text_features[:,0,:]
+        if not need_loss:
+            return image_features, text_features
+        criterion = nn.CosineSimilarity(dim=1).cuda()
+        loss = criterion(text_embedding, image_features)
+        # print(loss.shape)
+        loss = torch.mean(loss)
+        return image_features, text_features, loss
         
+
+
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
