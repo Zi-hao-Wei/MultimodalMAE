@@ -6,6 +6,8 @@ import yaml
 import os
 from torch.utils.data import DataLoader
 from torchvision.datasets.coco import CocoCaptions
+from utils.simple_tokenizer import SimpleTokenizer
+from model.models_mae import mae_vit_base_patch16_dec512d8b
 
 single_caption = True # choose if evalating only using the first caption
 model_name = "ViT-B/16" #"RN50" #"RN50x4" #"RN101" #
@@ -25,6 +27,21 @@ def compute_similarity(image_features, text_features, bs = 1000):
 
     print('Done similarity')
     return similarity_scores
+
+def tokenize(text):
+    context_length=77
+    tokenizer = SimpleTokenizer()
+    sot_token = tokenizer.encoder["<|startoftext|>"]
+    eot_token = tokenizer.encoder["<|endoftext|>"]
+    text = text[0]
+    tokens = [sot_token] + tokenizer.encode(text) + [eot_token]
+    # print(tokens)
+    result = torch.zeros(context_length, dtype=torch.long)
+    result[:len(tokens)] = torch.tensor(tokens)
+    mask = torch.zeros((context_length + 197, context_length + 197))
+    mask[(197 + len(tokens)):, :] = -1e9
+    mask[:, (197 + len(tokens)):] = -1e9
+    return result, mask
 
 def compute_retrieval(a2b_sims, return_ranks=True):
     """
@@ -67,6 +84,10 @@ def compute_retrieval(a2b_sims, return_ranks=True):
 print(model_name)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load(model_name, device=device)
+model = mae_vit_base_patch16_dec512d8b()
+model_parameter = torch.load(r"F:\MultimodalMAE\clip-training\checkpoint_299_138900.pt")["model_state_dict"]
+model.load_state_dict(model_parameter,strict=True)
+model.to(device)
 
 data_root = "F:\mscoco"
 train_root = os.path.join(data_root, 'train2017')
@@ -89,17 +110,21 @@ for batch_idx, batch in enumerate(valid_dataloader):
         texts = [texts[0][0]]
     else:
         texts = [txt[0] for txt in texts]
+    images = images.cuda()
+    texts, mask = tokenize(texts)
+    texts = texts.cuda().unsqueeze(0)
+    mask = mask.cuda().unsqueeze(0)
+    image_emb, text_emb = model.forward_finetune(images,texts,mask,need_loss=False)
 
-    texts = clip.tokenize(texts).cuda() #tokenize
-    text_emb = model.encode_text_embeddings(texts) #embed with text encoder
+    # text_emb = texts  #embed with text encoder
     if not single_caption:
         text_emb = text_emb.unsqueeze(0)
-    images = images.cuda()
-    image_emb = model.encode_image_embeddings(images) #embed with image encoder
+    # images = images.cuda()
+    # image_emb = model.encode_image(images) #embed with image encoder
     
 
-    text_features.append(text_emb.detach().cpu())
-    image_features.append(image_emb.detach().cpu())
+    text_features.append(text_emb.squeeze().detach().cpu())
+    image_features.append(image_emb.squeeze().detach().cpu())
 
 image_features = torch.cat(image_features, 0)
 text_features = torch.cat(text_features, 0)
@@ -117,7 +142,6 @@ if not single_caption:
         print(cap_idx, 'i2t', i2t_dict)
         print(cap_idx, 't2i', t2i_dict)
 else:
-    print(image_features.shape, text_features.shape)
     similarity_scores = compute_similarity(image_features, text_features)
     i2t_dict = compute_retrieval(similarity_scores.numpy())
     t2i_dict = compute_retrieval(similarity_scores.t().numpy())

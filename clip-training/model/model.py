@@ -220,7 +220,7 @@ class VisionTransformer(nn.Module):
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, cls=False):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
@@ -231,13 +231,16 @@ class VisionTransformer(nn.Module):
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-
-        x = self.ln_post(x[:, 1:, :])
-
-        if self.proj is not None:
-            x = x @ self.proj
-
-        return x
+        if cls:
+            x = self.ln_post(x[:,0,:])    
+            if self.proj is not None:
+                x = x @ self.proj
+            return x
+        else:
+            x = self.ln_post(x[:, 1:, :])
+            if self.proj is not None:
+                x = x @ self.proj
+            return x
 
 
 class CLIP(nn.Module):
@@ -339,7 +342,9 @@ class CLIP(nn.Module):
 
     def encode_image(self, image):
         return self.visual(image.type(self.dtype))
-
+    
+    def encode_image_embeddings(self, image):
+        return self.visual(image.type(self.dtype),cls=True)
     def encode_text(self, text):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
         x = x + self.positional_embedding.type(self.dtype)
@@ -352,6 +357,22 @@ class CLIP(nn.Module):
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         # x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+        # print(x.shape)
+
+        return x
+    
+    def encode_text_embeddings(self, text):
+        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+        # print(x.shape)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
         # print(x.shape)
 
         return x
@@ -372,7 +393,22 @@ class CLIP(nn.Module):
         # shape = [global_batch_size, global_batch_size]
         return logits_per_image, logits_per_text
 
+    def forward_zero_shot(self, image, text):
+        image_features = self.encode_image(image)
+        text_features = self.encode_text(text)
 
+        # normalized features
+        image_features = image_features / image_features.norm(dim=1, keepdim=True)
+        text_features = text_features / text_features.norm(dim=1, keepdim=True)
+
+        # cosine similarity as logits
+        logit_scale = self.logit_scale.exp()
+        logits_per_image = logit_scale * image_features @ text_features.t()
+        logits_per_text = logits_per_image.t()
+
+        # shape = [global_batch_size, global_batch_size]
+        return logits_per_image, logits_per_text
+    
 def convert_weights(model: nn.Module):
     """Convert applicable model parameters to fp16"""
 

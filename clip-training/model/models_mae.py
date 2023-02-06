@@ -502,11 +502,7 @@ class MaskedAutoencoderViT(nn.Module):
         """
         img_pred, text_pred = self.forward_decoder(latent, ids_restore, attn_mask)  # [N, L, p*p*3]
         img_loss = self.forward_img_loss(imgs, img_pred, img_mask)
-        
-        # show_image(imgs.squeeze(0).permute(1,2,0), 'orignal.jpg')
-        # show_image(self.unpatchify(img_pred).squeeze(0).permute(1,2,0), 'reconstructed.jpg')
-        # text_loss = self.forward_text_loss(text, text_pred, token_mask)
-        # loss = img_loss + text_loss
+
         loss = img_loss
         # exit()
         # loss = ((img_pred - image_features)**2).mean(-1).mean()
