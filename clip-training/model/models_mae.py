@@ -573,8 +573,9 @@ class MaskedAutoencoderViT(nn.Module):
     
     def forward_finetune(self,imgs,text, attn_mask, need_loss = True ):
         attn_mask = attn_mask.cuda()
-        image_features = self.clip.encode_image(imgs)
+        image_features = self.clip.encode_image_embeddings(imgs)
         text_features = self.clip.encode_text(text)
+        # print(image_features.shape, text_features.shape)
         text_features = text_features + self.pos_embed[:, 197:, :]
         text_features, mask2, ids_restore2, attn_mask = self.random_masking(text_features, 0, attn_mask)
 
@@ -589,13 +590,14 @@ class MaskedAutoencoderViT(nn.Module):
             text_features = blk(text_features, attn_mask)
         text_features = self.norm(text_features)
         text_embedding = text_features[:,0,:]
+        # print(text_embedding.shape)
         if not need_loss:
-            return image_features, text_features
+            return image_features, text_embedding
         criterion = nn.CosineSimilarity(dim=1).cuda()
         loss = criterion(text_embedding, image_features)
         # print(loss.shape)
         loss = torch.mean(loss)
-        return image_features, text_features, loss
+        return image_features, text_embedding, loss
         
 
 

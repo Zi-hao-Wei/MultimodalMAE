@@ -121,10 +121,11 @@ for batch_idx, batch in enumerate(valid_dataloader):
         text_emb = text_emb.unsqueeze(0)
     # images = images.cuda()
     # image_emb = model.encode_image(images) #embed with image encoder
-    
+    # print(batch_idx)
 
     text_features.append(text_emb.squeeze().detach().cpu())
     image_features.append(image_emb.squeeze().detach().cpu())
+
 
 image_features = torch.cat(image_features, 0)
 text_features = torch.cat(text_features, 0)
@@ -132,7 +133,7 @@ print('Done forward')
 
 # normalized features
 image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+text_features = text_features / text_features.norm(dim=-1, keepdim=True) 
 
 if not single_caption:
     for cap_idx in range(text_features.shape[1]):
@@ -142,6 +143,9 @@ if not single_caption:
         print(cap_idx, 'i2t', i2t_dict)
         print(cap_idx, 't2i', t2i_dict)
 else:
+    print(image_features.shape)
+    print(text_features.shape)
+
     similarity_scores = compute_similarity(image_features, text_features)
     i2t_dict = compute_retrieval(similarity_scores.numpy())
     t2i_dict = compute_retrieval(similarity_scores.t().numpy())

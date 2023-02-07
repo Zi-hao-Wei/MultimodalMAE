@@ -6544,3 +6544,19 @@
 2023-02-04 19:54:02,788 CLIP_COCO_TRAIN INFO: Epoch: 1, global_step: 171450, lr: 0.000104, loss: -0.0231 (-0.0020)
 2023-02-04 19:54:06,527 CLIP_COCO_TRAIN INFO: Epoch: 1, global_step: 171500, lr: 0.000104, loss: -0.0228 (-0.0020)
 2023-02-04 19:54:10,012 CLIP_COCO_TRAIN INFO: Epoch: 1, global_step: 171550, lr: 0.000104, loss: -0.0318 (-0.0020)
+2023-02-06 22:20:09,832 CLIP_COCO_TRAIN INFO: Training/evaluation parameters {'per_gpu_train_batch_size': 1, 'per_gpu_eval_batch_size': 128, 'n_gpu': 1, 'num_workers': 0, 'num_train_epochs': 35, 'gradient_accumulation_steps': 1, 'logging_steps': 50, 'save_steps': 10000, 'saved_checkpoints': 'saved_checkpoints', 'logs': 'logs', 'optimizer': {'params': {'eps': 1e-08, 'lr': 0.0005, 'weight_decay': 0.1}, 'type': 'AdamW'}}
+2023-02-06 22:20:12,400 CLIP_COCO_TRAIN INFO: ***** Running training *****
+2023-02-06 22:20:12,401 CLIP_COCO_TRAIN INFO:   Num examples = 118287
+2023-02-06 22:20:12,402 CLIP_COCO_TRAIN INFO:   Num Epochs = 35
+2023-02-06 22:20:12,402 CLIP_COCO_TRAIN INFO:   Number of GPUs = 1
+2023-02-06 22:20:12,403 CLIP_COCO_TRAIN INFO:   Batch size per GPU = 1
+2023-02-06 22:20:12,403 CLIP_COCO_TRAIN INFO:   Total train batch size (w. parallel, & accumulation) = 1
+2023-02-06 22:20:12,404 CLIP_COCO_TRAIN INFO:   Gradient Accumulation steps = 1
+2023-02-06 22:20:12,404 CLIP_COCO_TRAIN INFO:   Total optimization steps = 4140045
+2023-02-06 22:20:12,404 CLIP_COCO_TRAIN INFO:   warmup steps = 828009
+2023-02-06 22:20:18,109 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 50, lr: 0.000000, loss: 0.0542 (0.0531)
+2023-02-06 22:20:20,760 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 100, lr: 0.000000, loss: 0.0492 (0.0534)
+2023-02-06 22:20:23,407 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 150, lr: 0.000000, loss: 0.0382 (0.0491)
+2023-02-06 22:20:26,060 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 200, lr: 0.000000, loss: 0.0245 (0.0462)
+2023-02-06 22:20:28,737 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 250, lr: 0.000000, loss: 0.0353 (0.0412)
+2023-02-06 22:20:31,482 CLIP_COCO_TRAIN INFO: Epoch: 0, global_step: 300, lr: 0.000000, loss: -0.0306 (0.0353)
