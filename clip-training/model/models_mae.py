@@ -574,27 +574,39 @@ class MaskedAutoencoderViT(nn.Module):
     def forward_finetune(self,imgs,text, attn_mask, need_loss = True ):
         attn_mask = attn_mask.cuda()
         image_features = self.clip.encode_image_embeddings(imgs)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        image_features = image_features.float()
         text_features = self.clip.encode_text(text)
         # print(image_features.shape, text_features.shape)
         text_features = text_features + self.pos_embed[:, 197:, :]
-        text_features, mask2, ids_restore2, attn_mask = self.random_masking(text_features, 0, attn_mask)
-
+ 
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(text_features.shape[0], -1, -1)
         text_features = torch.cat((cls_tokens, text_features), dim=1) 
-
+        # print(attn_mask.shape)
+        attn_mask = attn_mask[:,-78:,-78:]
         # print(x.shape)
         # apply Transformer blocks
         # print(x.shape,attn_mask.shape)
         for blk in self.blocks:
             text_features = blk(text_features, attn_mask)
         text_features = self.norm(text_features)
+        
         text_embedding = text_features[:,0,:]
+        text_embedding = text_embedding / text_embedding.norm(dim=-1, keepdim=True) 
+        text_embedding = text_embedding.float()
+        
+        print("Text", text_embedding.shape)
+        print("Image", image_features.shape)
         # print(text_embedding.shape)
         if not need_loss:
             return image_features, text_embedding
+        # loss = 
         criterion = nn.CosineSimilarity(dim=1).cuda()
+        criterion = nn.MSELoss().cuda()
+        
         loss = criterion(text_embedding, image_features)
+        print("Loss",loss)
         # print(loss.shape)
         loss = torch.mean(loss)
         return image_features, text_embedding, loss
