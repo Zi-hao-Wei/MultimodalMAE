@@ -21,7 +21,7 @@ def compute_similarity(image_features, text_features, bs = 1000):
             print('Processing Visual '+str(v)+' Text '+str(t), end='\r')
             batch_visual_emb = image_features[v:v+bs]
             batch_caption_emb = text_features[t:t+bs]
-
+            print(batch_visual_emb)
             logits = batch_visual_emb @ batch_caption_emb.t()
             similarity_scores[v:v+bs,t:t+bs] = logits
 
@@ -122,9 +122,11 @@ for batch_idx, batch in enumerate(valid_dataloader):
     # images = images.cuda()
     # image_emb = model.encode_image(images) #embed with image encoder
     # print(batch_idx)
-
-    text_features.append(text_emb.squeeze().detach().cpu())
-    image_features.append(image_emb.squeeze().detach().cpu())
+    # print(text_emb.squeeze().shape)
+    text_features.append(text_emb.detach().cpu())
+    image_features.append(image_emb.detach().cpu())
+    # if(batch_idx==10):
+    #     break 
 
 
 image_features = torch.cat(image_features, 0)
@@ -143,8 +145,10 @@ if not single_caption:
         print(cap_idx, 'i2t', i2t_dict)
         print(cap_idx, 't2i', t2i_dict)
 else:
-    print(image_features.shape)
-    print(text_features.shape)
+    # print(image_features.shape)
+    # print(text_features.shape)
+    image_features = image_features.float()
+    text_features = text_features.float()
 
     similarity_scores = compute_similarity(image_features, text_features)
     i2t_dict = compute_retrieval(similarity_scores.numpy())
