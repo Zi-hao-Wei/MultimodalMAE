@@ -114,7 +114,7 @@ for batch_idx, batch in enumerate(valid_dataloader):
     texts, mask = tokenize(texts)
     texts = texts.cuda().unsqueeze(0)
     mask = mask.cuda().unsqueeze(0)
-    image_emb, text_emb = model.forward_finetune(images,texts,mask,need_loss=False)
+    image_emb, text_emb, loss = model.forward_finetune(images,texts,mask)
 
     # text_emb = texts  #embed with text encoder
     if not single_caption:

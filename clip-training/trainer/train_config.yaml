@@ -1,4 +1,4 @@
-per_gpu_train_batch_size : 1 # 128 exeeds GPU memory
+per_gpu_train_batch_size : 8 # 128 exeeds GPU memory
 per_gpu_eval_batch_size : 128 # not used in CLIP training
 n_gpu : 1
 num_workers : 0

@@ -595,18 +595,28 @@ class MaskedAutoencoderViT(nn.Module):
         text_embedding = text_features[:,0,:]
         text_embedding = text_embedding / text_embedding.norm(dim=-1, keepdim=True) 
         text_embedding = text_embedding.float()
-        
-        print("Text", text_embedding.shape)
-        print("Image", image_features.shape)
+
+
+        text_original = self.clip.encode_text_embeddings(text)
+        text_original = text_original / text_original.norm(dim=-1, keepdim=True) 
+      
+      
+      
+        criterion = nn.CosineSimilarity(dim=1).cuda()
+
+        # print("Text,Text_original", torch.sum(text_original*text_embedding))
+        # print("Text,Image", torch.sum(text_original*image_features))
+        # print("Text_original,Image", torch.sum(text_embedding*image_features))
+
+        # print("Image", image_features.shape)
         # print(text_embedding.shape)
         if not need_loss:
             return image_features, text_embedding
         # loss = 
-        criterion = nn.CosineSimilarity(dim=1).cuda()
-        criterion = nn.MSELoss().cuda()
+        # criterion = nn.MSELoss().cuda()
         
-        loss = criterion(text_embedding, image_features)
-        print("Loss",loss)
+        loss = -criterion(text_embedding, image_features)
+        # print("Loss",loss)
         # print(loss.shape)
         loss = torch.mean(loss)
         return image_features, text_embedding, loss
