@@ -604,8 +604,8 @@ class MaskedAutoencoderViT(nn.Module):
       
       
       
-        criterion = nn.CosineSimilarity(dim=1).cuda()
-        sim = criterion(text_embedding, image_features)
+  
+        sim = nn.CosineSimilarity(dim=1, eps=1e-6)(text_embedding, image_features)
 
         # print(text_embedding.shape)
         # print(sim, label)

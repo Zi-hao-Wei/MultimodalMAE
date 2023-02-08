@@ -71,9 +71,9 @@ class CLIP_COCO_dataset(Dataset):
         for ids, s1, s2 in zip(self.img_ids,shuffled,shuffled2):
             self.total.append((ids, ids, 1))
             if ids!=s1:
-                self.total.append((ids,s1,0))
+                self.total.append((ids,s1,-1))
             if ids!=s2:
-                self.total.append((ids,s2,0))
+                self.total.append((ids,s2,-1))
 
 
         self.img_dir = self.config.train_img_dir
