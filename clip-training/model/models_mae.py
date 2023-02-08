@@ -571,7 +571,7 @@ class MaskedAutoencoderViT(nn.Module):
         loss = torch.sum(loss * mask) / (torch.sum(mask) + 1e-10)
         return loss
     
-    def forward_finetune(self,imgs,text, attn_mask, need_loss = True ):
+    def forward_finetune(self,imgs,text, attn_mask, label=None, need_loss = True ):
         attn_mask = attn_mask.cuda()
         image_features = self.clip.encode_image_embeddings(imgs)
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
@@ -596,29 +596,34 @@ class MaskedAutoencoderViT(nn.Module):
         text_embedding = text_embedding / text_embedding.norm(dim=-1, keepdim=True) 
         text_embedding = text_embedding.float()
 
-
+        if not need_loss:
+            return image_features, text_embedding
+        
         text_original = self.clip.encode_text_embeddings(text)
         text_original = text_original / text_original.norm(dim=-1, keepdim=True) 
       
       
       
         criterion = nn.CosineSimilarity(dim=1).cuda()
+        sim = criterion(text_embedding, image_features)
 
+        # print(text_embedding.shape)
+        # print(sim, label)
         # print("Text,Text_original", torch.sum(text_original*text_embedding))
-        # print("Text,Image", torch.sum(text_original*image_features))
-        # print("Text_original,Image", torch.sum(text_embedding*image_features))
+        # print("Text,Image", torch.sum(text_embedding*image_features))
+        # print("Text_original,Image", torch.sum(text_original*image_features))
 
         # print("Image", image_features.shape)
         # print(text_embedding.shape)
-        if not need_loss:
-            return image_features, text_embedding
+    
         # loss = 
-        # criterion = nn.MSELoss().cuda()
+        criterion = nn.MSELoss().cuda()
         
-        loss = -criterion(text_embedding, image_features)
+        loss = criterion(sim, label.float())
+        loss = torch.mean(loss)
+
         # print("Loss",loss)
         # print(loss.shape)
-        loss = torch.mean(loss)
         return image_features, text_embedding, loss
         
 

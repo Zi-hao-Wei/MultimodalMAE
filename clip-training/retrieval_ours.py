@@ -85,7 +85,7 @@ print(model_name)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load(model_name, device=device)
 model = mae_vit_base_patch16_dec512d8b()
-model_parameter = torch.load(r"F:\MultimodalMAE\clip-training\checkpoint_299_138900.pt")["model_state_dict"]
+model_parameter = torch.load(r"F:\MultimodalMAE\clip-training\saved_checkpoints\checkpoint_0_1000.pt")["model_state_dict"]
 model.load_state_dict(model_parameter,strict=True)
 model.to(device)
 
@@ -125,13 +125,18 @@ for batch_idx, batch in enumerate(valid_dataloader):
     # print(text_emb.squeeze().shape)
     text_features.append(text_emb.detach().cpu())
     image_features.append(image_emb.detach().cpu())
-    # if(batch_idx==10):
-    #     break 
+    if(batch_idx==100):
+        break 
 
 
 image_features = torch.cat(image_features, 0)
 text_features = torch.cat(text_features, 0)
 print('Done forward')
+
+print(torch.std(image_features))
+print(torch.std(text_features))
+
+
 
 # normalized features
 image_features = image_features / image_features.norm(dim=-1, keepdim=True)

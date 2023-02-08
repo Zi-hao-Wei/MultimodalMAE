@@ -101,6 +101,9 @@ for batch_idx, batch in enumerate(valid_dataloader):
     text_features.append(text_emb.detach().cpu())
     image_features.append(image_emb.detach().cpu())
 
+    if(batch_idx==100):
+        break 
+
 image_features = torch.cat(image_features, 0)
 text_features = torch.cat(text_features, 0)
 print('Done forward')

@@ -7,7 +7,7 @@ num_train_epochs : 35 # number of epochs to train
 gradient_accumulation_steps : 1 # Number of updates steps to accumulate before backward
 
 logging_steps : 50 #  log every this steps
-save_steps : 10000 # 1000 steps take 1 hour with 4 GTX1080 GPUs and batch size = 256 (64 per GPU)
+save_steps : 1000 # 1000 steps take 1 hour with 4 GTX1080 GPUs and batch size = 256 (64 per GPU)
 
 saved_checkpoints : saved_checkpoints
 logs : logs

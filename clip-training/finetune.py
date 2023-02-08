@@ -4,7 +4,7 @@ import numpy as np
 import os
 from omegaconf import OmegaConf
 
-from dataloader.dataset import CLIP_COCO_dataset
+from dataloader.dataset_finetune import CLIP_COCO_dataset
 from dataloader.data_loaders import get_dataloader
 
 from model.model import CLIP
@@ -66,12 +66,13 @@ def train(config, train_dataset, model):
     for epoch in range(int(config.num_train_epochs)):
         print("EPOCH",epoch)
         for step, batch in enumerate(train_dataloader):
-            input_images, input_texts, mask = batch
+            input_images, input_texts, mask, label = batch
 
             input_images = input_images.to(torch.device(config.device))
             input_texts = input_texts.to(torch.device(config.device))
+            label = label.to(torch.device(config.device))
             
-            _,_,loss = model.forward_finetune(input_images, input_texts, attn_mask=mask)
+            _,_,loss = model.forward_finetune(input_images, input_texts, label=label, attn_mask=mask)
 
             # # normalized features
             # image_features = image_features / image_features.norm(dim=-1, keepdim=True)
@@ -96,7 +97,6 @@ def train(config, train_dataset, model):
                 loss = loss.mean() # mean() to average on multi-gpu parallel training
             if config.gradient_accumulation_steps > 1:
                 loss = loss / config.gradient_accumulation_steps
-            # print(loss)
             # exit()
             loss.backward()
 
